@@ -1,13 +1,14 @@
-let socket = new WebSocket("ws://localhost:8001"); // replace with actual IP address of jetson orin server s.t. 1.1.1.1:8000/ws/transcribe
+let socket;
 let displayDiv = document.getElementById("textDisplay");
 let server_available = false;
 let mic_available = false;
 let fullSentences = [];
 
-const serverCheckInterval = 1000; // Check every 5 seconds
+const serverCheckInterval = 5000; // Check every 5 seconds
 
 function connectToServer() {
-  socket = new WebSocket("ws://localhost:8001");
+  // replace with actual IP address of hosting server such as 1.1.1.1:8000/ws/transcribe
+  socket = new WebSocket("wss://localhost:8001");
 
   socket.onopen = function (event) {
     server_available = true;
