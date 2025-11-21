@@ -87,6 +87,10 @@ navigator.mediaDevices
       // Send the 16-bit PCM data to the server
 
       if (socket && socket.readyState === WebSocket.OPEN) {
+        console.log(
+          "🎤 Sending audio chunk...",
+          e.inputBuffer.getChannelData(0).length,
+        );
         // Create a JSON string with metadata
         let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
         // Convert metadata to a byte array
