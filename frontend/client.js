@@ -1,16 +1,16 @@
-let socket;
+let socket = null;
 let displayDiv = document.getElementById("textDisplay");
 let server_available = false;
 let mic_available = false;
 let fullSentences = [];
 
 const serverCheckInterval = 5000; // Check every 5 seconds
+const WEBSOCKET_URL =
+  "wss://sparc-yoga-completely-influences.trycloudflare.com/ws/transcribe";
 
 function connectToServer() {
   // replace with actual IP address of hosting server such as 1.1.1.1:8000/ws/transcribe
-  socket = new WebSocket(
-    "wss://sparc-yoga-completely-influences.trycloudflare.com/ws/transcribe",
-  );
+  socket = new WebSocket(WEBSOCKET_URL);
 
   socket.onopen = function (event) {
     server_available = true;
@@ -32,17 +32,6 @@ function connectToServer() {
     server_available = false;
   };
 }
-
-socket.onmessage = function (event) {
-  let data = JSON.parse(event.data);
-
-  if (data.type === "realtime") {
-    displayRealtimeText(data.text, displayDiv);
-  } else if (data.type === "fullSentence") {
-    fullSentences.push(data.text);
-    displayRealtimeText("", displayDiv); // Refresh display with new full sentence
-  }
-};
 
 function displayRealtimeText(realtimeText, displayDiv) {
   let displayedText =
