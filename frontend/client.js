@@ -4,9 +4,10 @@ let server_available = false;
 let mic_available = false;
 let fullSentences = [];
 
+const CLOUDFLARE_TUNNEL_URL =
+  "https://overview-guru-bids-cars.trycloudflare.com";
 const serverCheckInterval = 5000; // Check every 5 seconds
-const WEBSOCKET_URL =
-  "wss://sparc-yoga-completely-influences.trycloudflare.com/ws/transcribe";
+const WEBSOCKET_URL = `${CLOUDFLARE_TUNNEL_URL}/ws/transcribe`;
 
 function connectToServer() {
   // replace with actual IP address of hosting server such as 1.1.1.1:8000/ws/transcribe
