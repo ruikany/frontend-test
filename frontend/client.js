@@ -64,11 +64,6 @@ setInterval(() => {
 
 start_msg();
 
-socket.onopen = function (event) {
-  server_available = true;
-  start_msg();
-};
-
 // Request access to the microphone
 navigator.mediaDevices
   .getUserMedia({ audio: true })
