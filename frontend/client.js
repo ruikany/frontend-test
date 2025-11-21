@@ -62,19 +62,17 @@ setInterval(() => {
   }
 }, serverCheckInterval);
 
-start_msg();
-
 // Request access to the microphone
 navigator.mediaDevices
   .getUserMedia({ audio: true })
   .then((stream) => {
+    mic_available = true;
     let audioContext = new AudioContext();
     let source = audioContext.createMediaStreamSource(stream);
     let processor = audioContext.createScriptProcessor(256, 1, 1);
 
     source.connect(processor);
     processor.connect(audioContext.destination);
-    mic_available = true;
     start_msg();
 
     processor.onaudioprocess = function (e) {
@@ -88,7 +86,7 @@ navigator.mediaDevices
 
       // Send the 16-bit PCM data to the server
 
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
         // Create a JSON string with metadata
         let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
         // Convert metadata to a byte array
