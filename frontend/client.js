@@ -69,45 +69,42 @@ navigator.mediaDevices
     mic_available = true;
     let audioContext = new AudioContext();
     let source = audioContext.createMediaStreamSource(stream);
-    let processor = audioContext.createScriptProcessor(256, 1, 1);
+    let processor = audioContext.createScriptProcessor(4096, 1, 1);
 
     source.connect(processor);
     processor.connect(audioContext.destination);
     start_msg();
 
     processor.onaudioprocess = function (e) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
       let inputData = e.inputBuffer.getChannelData(0);
       let outputData = new Int16Array(inputData.length);
-
-      // Convert to 16-bit PCM
       for (let i = 0; i < inputData.length; i++) {
         outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
       }
 
       // Send the 16-bit PCM data to the server
-
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        console.log(
-          "🎤 Sending audio chunk...",
-          e.inputBuffer.getChannelData(0).length,
-        );
-        // Create a JSON string with metadata
-        let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
-        // Convert metadata to a byte array
-        let metadataBytes = new TextEncoder().encode(metadata);
-        // Create a buffer for metadata length (4 bytes for 32-bit integer)
-        let metadataLength = new ArrayBuffer(4);
-        let metadataLengthView = new DataView(metadataLength);
-        // Set the length of the metadata in the first 4 bytes
-        metadataLengthView.setInt32(0, metadataBytes.byteLength, true); // true for little-endian
-        // Combine metadata length, metadata, and audio data into a single message
-        let combinedData = new Blob([
-          metadataLength,
-          metadataBytes,
-          outputData.buffer,
-        ]);
-        socket.send(combinedData);
-      }
+      console.log(
+        "🎤 Sending audio chunk...",
+        e.inputBuffer.getChannelData(0).length,
+      );
+      // Create a JSON string with metadata
+      let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
+      // Convert metadata to a byte array
+      let metadataBytes = new TextEncoder().encode(metadata);
+      // Create a buffer for metadata length (4 bytes for 32-bit integer)
+      let metadataLength = new ArrayBuffer(4);
+      let metadataLengthView = new DataView(metadataLength);
+      // Set the length of the metadata in the first 4 bytes
+      metadataLengthView.setInt32(0, metadataBytes.byteLength, true); // true for little-endian
+      // Combine metadata length, metadata, and audio data into a single message
+      let combinedData = new Blob([
+        metadataLength,
+        metadataBytes,
+        outputData.buffer,
+      ]);
+      socket.send(combinedData);
     };
   })
   .catch((e) => console.error(e));
