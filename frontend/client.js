@@ -8,7 +8,9 @@ const serverCheckInterval = 5000; // Check every 5 seconds
 
 function connectToServer() {
   // replace with actual IP address of hosting server such as 1.1.1.1:8000/ws/transcribe
-  socket = new WebSocket("wss://localhost:8001");
+  socket = new WebSocket(
+    "wss://sparc-yoga-completely-influences.trycloudflare.com/ws/transcribe",
+  );
 
   socket.onopen = function (event) {
     server_available = true;
