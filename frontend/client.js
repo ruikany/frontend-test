@@ -6,7 +6,7 @@ let fullSentences = [];
 let reconnectTimeout = null;
 
 const CLOUDFLARE_TUNNEL_URL =
-  "wss://organizer-antarctica-immigrants-jesse.trycloudflare.com";
+  "wss://clarke-reasonably-clicks-pot.trycloudflare.com";
 const serverCheckInterval = 5000; // Check every 5 seconds
 const WEBSOCKET_URL = `${CLOUDFLARE_TUNNEL_URL}/ws/transcribe`;
 
