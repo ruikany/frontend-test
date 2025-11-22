@@ -104,8 +104,22 @@ navigator.mediaDevices
       let inputData = e.inputBuffer.getChannelData(0);
       let outputData = new Int16Array(inputData.length);
 
+      // for (let i = 0; i < inputData.length; i++) {
+      //   outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+      // }
+
+      let gain = 25.0; // Boost volume 25x (Force the VAD to hear you)
+
       for (let i = 0; i < inputData.length; i++) {
-        outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+        // Apply gain
+        let amplified = inputData[i] * gain;
+
+        // CLAMP the values so they don't overflow (Distortion protection)
+        // Range must stay between -1.0 and 1.0 for float audio
+        amplified = Math.max(-1.0, Math.min(1.0, amplified));
+
+        // Convert to 16-bit PCM
+        outputData[i] = amplified < 0 ? amplified * 0x8000 : amplified * 0x7fff;
       }
 
       let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
