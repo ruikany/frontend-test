@@ -3,6 +3,7 @@ let displayDiv = document.getElementById("textDisplay");
 let server_available = false;
 let mic_available = false;
 let fullSentences = [];
+let reconnectTimeout = null;
 
 const CLOUDFLARE_TUNNEL_URL =
   "wss://organizer-antarctica-immigrants-jesse.trycloudflare.com";
@@ -15,6 +16,8 @@ function connectToServer() {
 
   socket.onopen = function (event) {
     server_available = true;
+    server_available = true;
+    mic_available = true;
     start_msg();
   };
 
@@ -31,6 +34,14 @@ function connectToServer() {
 
   socket.onclose = function (event) {
     server_available = false;
+    start_msg();
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    reconnectTimeout = setTimeout(connectToServer, 3000);
+  };
+
+  socket.onerror = function (err) {
+    console.error("Socket error:", err);
+    socket.close(); // Force close to trigger onclose logic
   };
 }
 
@@ -56,12 +67,7 @@ function start_msg() {
   else displayRealtimeText("👄  start speaking  👄", displayDiv);
 }
 
-// Check server availability periodically
-setInterval(() => {
-  if (!server_available) {
-    connectToServer();
-  }
-}, serverCheckInterval);
+connectToServer();
 
 // Request access to the microphone
 navigator.mediaDevices
