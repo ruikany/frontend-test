@@ -5,7 +5,7 @@ let mic_available = false;
 let fullSentences = [];
 
 const CLOUDFLARE_TUNNEL_URL =
-  "wss://eco-knights-transit-neither.trycloudflare.com";
+  "wss://organizer-antarctica-immigrants-jesse.trycloudflare.com";
 const serverCheckInterval = 5000; // Check every 5 seconds
 const WEBSOCKET_URL = `${CLOUDFLARE_TUNNEL_URL}/ws/transcribe`;
 
