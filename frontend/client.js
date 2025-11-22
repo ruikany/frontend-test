@@ -4,9 +4,12 @@ let server_available = false;
 let mic_available = false;
 let fullSentences = [];
 let reconnectTimeout = null;
+
+// NEW: Flag to control audio flow
+let is_server_ready = false;
+
 const WEBSOCKET_URL =
   "wss://extra-walt-readers-bestsellers.trycloudflare.com/ws/transcribe";
-
 function connectToServer() {
   if (socket && socket.readyState === WebSocket.OPEN) return;
 
@@ -14,13 +17,22 @@ function connectToServer() {
   socket = new WebSocket(WEBSOCKET_URL);
 
   socket.onopen = function (event) {
-    console.log("✅ Connected to server");
+    console.log("✅ Connected to socket (Waiting for Ready signal...)");
     server_available = true;
     start_msg();
   };
 
   socket.onmessage = function (event) {
     let data = JSON.parse(event.data);
+
+    // 1. LISTEN FOR READY SIGNAL
+    if (data.type === "status" && data.text === "ready") {
+      console.log("🚀 Server is Ready! Starting audio stream...");
+      is_server_ready = true;
+      start_msg();
+      return;
+    }
+
     if (data.type === "realtime") {
       displayRealtimeText(data.text, displayDiv);
     } else if (data.type === "fullSentence") {
@@ -32,6 +44,7 @@ function connectToServer() {
   socket.onclose = function (event) {
     console.log("❌ Disconnected. Retrying in 3s...");
     server_available = false;
+    is_server_ready = false; // Reset ready flag
     start_msg();
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
     reconnectTimeout = setTimeout(connectToServer, 3000);
@@ -61,52 +74,43 @@ function start_msg() {
   if (!mic_available)
     displayRealtimeText("🎤  please allow microphone access  🎤", displayDiv);
   else if (!server_available)
-    displayRealtimeText("🖥️  connecting to server...  🖥️", displayDiv);
+    displayRealtimeText("⏳  connecting...  ⏳", displayDiv);
+  else if (!is_server_ready)
+    displayRealtimeText("🔄  loading AI models...  🔄", displayDiv); // New State
   else displayRealtimeText("👄  start speaking  👄", displayDiv);
 }
 
-// Initialize Mic
 navigator.mediaDevices
   .getUserMedia({ audio: true })
   .then((stream) => {
     mic_available = true;
     let audioContext = new AudioContext();
     let source = audioContext.createMediaStreamSource(stream);
-
-    // --- CRITICAL FIX: CHANGE 256 TO 4096 ---
-    // 4096 samples = ~85ms latency. This is reliable over WiFi/Internet.
     let processor = audioContext.createScriptProcessor(4096, 1, 1);
 
     source.connect(processor);
     processor.connect(audioContext.destination);
 
-    // Connect to server only after mic is ready
     connectToServer();
 
     processor.onaudioprocess = function (e) {
-      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      // CRITICAL FIX: Only send if socket is OPEN AND Server is READY
+      if (!socket || socket.readyState !== WebSocket.OPEN || !is_server_ready)
+        return;
 
       let inputData = e.inputBuffer.getChannelData(0);
       let outputData = new Int16Array(inputData.length);
 
-      // Convert to 16-bit PCM
       for (let i = 0; i < inputData.length; i++) {
         outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
       }
 
-      // Debug log: Print once every 100 packets to avoid spamming console
-      if (Math.random() < 0.01) {
-        console.log("🎤 Sending audio packet, size:", outputData.length);
-      }
-
-      // Create Metadata
       let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
       let metadataBytes = new TextEncoder().encode(metadata);
       let metadataLength = new ArrayBuffer(4);
       let metadataLengthView = new DataView(metadataLength);
       metadataLengthView.setInt32(0, metadataBytes.byteLength, true);
 
-      // Send Blob
       let combinedData = new Blob([
         metadataLength,
         metadataBytes,
@@ -117,5 +121,5 @@ navigator.mediaDevices
   })
   .catch((e) => {
     console.error("Mic Error:", e);
-    displayRealtimeText("❌ Mic Access Denied: " + e.message, displayDiv);
+    displayRealtimeText("❌ Mic Access Denied", displayDiv);
   });
