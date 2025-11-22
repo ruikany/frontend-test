@@ -11,27 +11,22 @@ const WEBSOCKET_URL =
 
 function connectToServer() {
   if (socket && socket.readyState === WebSocket.OPEN) return;
-
   console.log("Connecting to:", WEBSOCKET_URL);
   socket = new WebSocket(WEBSOCKET_URL);
 
-  socket.onopen = function (event) {
-    console.log("✅ Connected to socket (Waiting for Ready signal...)");
+  socket.onopen = (e) => {
+    console.log("✅ Connected (Waiting for Ready...)");
     server_available = true;
     start_msg();
   };
 
-  socket.onmessage = function (event) {
-    let data = JSON.parse(event.data);
-
+  socket.onmessage = (e) => {
+    let data = JSON.parse(e.data);
     if (data.type === "status" && data.text === "ready") {
-      console.log("🚀 Server is Ready! Starting audio stream...");
+      console.log("🚀 Server Ready!");
       is_server_ready = true;
       start_msg();
-      return;
-    }
-
-    if (data.type === "realtime") {
+    } else if (data.type === "realtime") {
       displayRealtimeText(data.text, displayDiv);
     } else if (data.type === "fullSentence") {
       fullSentences.push(data.text);
@@ -39,63 +34,47 @@ function connectToServer() {
     }
   };
 
-  socket.onclose = function (event) {
-    console.log("❌ Disconnected. Retrying in 3s...");
+  socket.onclose = (e) => {
+    console.log("❌ Disconnected. Retrying...");
     server_available = false;
     is_server_ready = false;
     start_msg();
-    if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    reconnectTimeout = setTimeout(connectToServer, 3000);
-  };
-
-  socket.onerror = function (error) {
-    console.error("WebSocket Error:", error);
-    socket.close();
+    setTimeout(connectToServer, 3000);
   };
 }
 
 function displayRealtimeText(realtimeText, displayDiv) {
   let displayedText =
     fullSentences
-      .map((sentence, index) => {
-        let span = document.createElement("span");
-        span.textContent = sentence + " ";
-        span.className = index % 2 === 0 ? "yellow" : "cyan";
-        return span.outerHTML;
-      })
+      .map(
+        (s, i) =>
+          `<span class="${i % 2 === 0 ? "yellow" : "cyan"}">${s} </span>`,
+      )
       .join("") + realtimeText;
-
   displayDiv.innerHTML = displayedText;
 }
 
 function start_msg() {
-  if (!mic_available)
-    displayRealtimeText("🎤  please allow microphone access  🎤", displayDiv);
+  if (!mic_available) displayRealtimeText("🎤 Allow Mic 🎤", displayDiv);
   else if (!server_available)
-    displayRealtimeText("⏳  connecting...  ⏳", displayDiv);
+    displayRealtimeText("⏳ Connecting... ⏳", displayDiv);
   else if (!is_server_ready)
-    displayRealtimeText("🔄  loading AI models...  🔄", displayDiv);
-  else displayRealtimeText("👄  start speaking  👄", displayDiv);
+    displayRealtimeText("🔄 Loading AI... 🔄", displayDiv);
+  else displayRealtimeText("👄 Speak Now 👄", displayDiv);
 }
 
-// --- DOWNSAMPLING HELPER FUNCTION ---
-// Converts incoming audio (usually 44.1k or 48k) to 16k
-function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
-  if (outputSampleRate === inputSampleRate) {
-    return buffer;
-  }
-  var sampleRateRatio = inputSampleRate / outputSampleRate;
-  var newLength = Math.round(buffer.length / sampleRateRatio);
-  var result = new Float32Array(newLength);
-  var offsetResult = 0;
-  var offsetBuffer = 0;
-
+function downsampleBuffer(buffer, inputRate, outputRate) {
+  if (outputRate === inputRate) return buffer;
+  let ratio = inputRate / outputRate;
+  let newLength = Math.round(buffer.length / ratio);
+  let result = new Float32Array(newLength);
+  let offsetResult = 0,
+    offsetBuffer = 0;
   while (offsetResult < result.length) {
-    var nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-    // Use simple averaging to prevent aliasing
-    var accum = 0,
+    let nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+    let accum = 0,
       count = 0;
-    for (var i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
       accum += buffer[i];
       count++;
     }
@@ -106,22 +85,24 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
   return result;
 }
 
-// --- MAIN AUDIO SETUP ---
 navigator.mediaDevices
-  .getUserMedia({ audio: true }) // Reverted to default (removes hardware error)
+  .getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  })
   .then((stream) => {
     mic_available = true;
-
-    let audioContext = new AudioContext(); // Default sample rate (likely 44.1k or 48k)
+    let audioContext = new AudioContext();
     let source = audioContext.createMediaStreamSource(stream);
-    let processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-    // GAIN NODE (Volume Boost)
-    let gainNode = audioContext.createGain();
-    gainNode.gain.value = 25.0;
+    // SMALLER BUFFER = FASTER VAD RESPONSE
+    // 1024 samples is approx 20-60ms depending on sample rate
+    let processor = audioContext.createScriptProcessor(1024, 1, 1);
 
-    source.connect(gainNode);
-    gainNode.connect(processor);
+    source.connect(processor);
     processor.connect(audioContext.destination);
 
     connectToServer();
@@ -131,38 +112,37 @@ navigator.mediaDevices
         return;
 
       let inputData = e.inputBuffer.getChannelData(0);
-
-      // 1. DOWNSAMPLE TO 16000 HZ MANUALLY
-      let downsampledData = downsampleBuffer(
+      let downsampled = downsampleBuffer(
         inputData,
         audioContext.sampleRate,
         16000,
       );
+      let outputData = new Int16Array(downsampled.length);
 
-      // 2. CONVERT TO INT16
-      let outputData = new Int16Array(downsampledData.length);
-      for (let i = 0; i < downsampledData.length; i++) {
-        let amplified = downsampledData[i];
-        amplified = Math.max(-1.0, Math.min(1.0, amplified)); // Clamp
-        outputData[i] = amplified < 0 ? amplified * 0x8000 : amplified * 0x7fff;
+      // MODERATE GAIN (10x) + NOISE GATE
+      const GAIN = 10.0;
+      const NOISE_THRESHOLD = 0.01; // Ignore very quiet background static
+
+      for (let i = 0; i < downsampled.length; i++) {
+        let val = downsampled[i];
+
+        // Simple Noise Gate: If too quiet, silence it completely
+        if (Math.abs(val) < NOISE_THRESHOLD) {
+          val = 0;
+        } else {
+          val = val * GAIN;
+        }
+
+        val = Math.max(-1.0, Math.min(1.0, val));
+        outputData[i] = val < 0 ? val * 0x8000 : val * 0x7fff;
       }
 
-      // 3. SEND (Always marked as 16000)
       let metadata = JSON.stringify({ sampleRate: 16000 });
       let metadataBytes = new TextEncoder().encode(metadata);
-      let metadataLength = new ArrayBuffer(4);
-      let metadataLengthView = new DataView(metadataLength);
-      metadataLengthView.setInt32(0, metadataBytes.byteLength, true);
+      let metaLen = new ArrayBuffer(4);
+      new DataView(metaLen).setInt32(0, metadataBytes.byteLength, true);
 
-      let combinedData = new Blob([
-        metadataLength,
-        metadataBytes,
-        outputData.buffer,
-      ]);
-      socket.send(combinedData);
+      socket.send(new Blob([metaLen, metadataBytes, outputData.buffer]));
     };
   })
-  .catch((e) => {
-    console.error("Mic Error:", e);
-    displayRealtimeText("❌ Mic Access Denied", displayDiv);
-  });
+  .catch((e) => console.error(e));
