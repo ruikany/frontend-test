@@ -4,9 +4,8 @@ let server_available = false;
 let mic_available = false;
 let fullSentences = [];
 let reconnectTimeout = null;
-
 const WEBSOCKET_URL =
-  "wss://displays-prayer-coordinated-rail.trycloudflare.com/ws/transcribe";
+  "wss://approximate-travel-pontiac-course.trycloudflare.com/ws/transcribe";
 
 function connectToServer() {
   if (socket && socket.readyState === WebSocket.OPEN) return;
