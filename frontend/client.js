@@ -4,16 +4,11 @@ let server_available = false;
 let mic_available = false;
 let fullSentences = [];
 let reconnectTimeout = null;
-
-// global vars issues in V8
-let source = null;
-let processor = null;
-
-// NEW: Flag to control audio flow
 let is_server_ready = false;
 
 const WEBSOCKET_URL =
   "wss://extra-walt-readers-bestsellers.trycloudflare.com/ws/transcribe";
+
 function connectToServer() {
   if (socket && socket.readyState === WebSocket.OPEN) return;
 
@@ -29,7 +24,6 @@ function connectToServer() {
   socket.onmessage = function (event) {
     let data = JSON.parse(event.data);
 
-    // 1. LISTEN FOR READY SIGNAL
     if (data.type === "status" && data.text === "ready") {
       console.log("🚀 Server is Ready! Starting audio stream...");
       is_server_ready = true;
@@ -48,7 +42,7 @@ function connectToServer() {
   socket.onclose = function (event) {
     console.log("❌ Disconnected. Retrying in 3s...");
     server_available = false;
-    is_server_ready = false; // Reset ready flag
+    is_server_ready = false;
     start_msg();
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
     reconnectTimeout = setTimeout(connectToServer, 3000);
@@ -80,89 +74,51 @@ function start_msg() {
   else if (!server_available)
     displayRealtimeText("⏳  connecting...  ⏳", displayDiv);
   else if (!is_server_ready)
-    displayRealtimeText("🔄  loading AI models...  🔄", displayDiv); // New State
+    displayRealtimeText("🔄  loading AI models...  🔄", displayDiv);
   else displayRealtimeText("👄  start speaking  👄", displayDiv);
 }
 
-// navigator.mediaDevices
-//   .getUserMedia({ audio: true })
-//   .then((stream) => {
-//     mic_available = true;
-//     let audioContext = new AudioContext();
-//     source = audioContext.createMediaStreamSource(stream);
-//     processor = audioContext.createScriptProcessor(4096, 1, 1);
-//
-//     source.connect(processor);
-//     processor.connect(audioContext.destination);
-//
-//     connectToServer();
-//
-//     processor.onaudioprocess = function (e) {
-//       if (!socket || socket.readyState !== WebSocket.OPEN || !is_server_ready)
-//         return;
-//
-//       let inputData = e.inputBuffer.getChannelData(0);
-//       let outputData = new Int16Array(inputData.length);
-//
-//       // for (let i = 0; i < inputData.length; i++) {
-//       //   outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-//       // }
-//
-//       let gain = 25.0; // Boost volume 25x (Force the VAD to hear you)
-//
-//       for (let i = 0; i < inputData.length; i++) {
-//         // Apply gain
-//         let amplified = inputData[i] * gain;
-//
-//         // CLAMP the values so they don't overflow (Distortion protection)
-//         // Range must stay between -1.0 and 1.0 for float audio
-//         amplified = Math.max(-1.0, Math.min(1.0, amplified));
-//
-//         // Convert to 16-bit PCM
-//         outputData[i] = amplified < 0 ? amplified * 0x8000 : amplified * 0x7fff;
-//       }
-//
-//       let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
-//       let metadataBytes = new TextEncoder().encode(metadata);
-//       let metadataLength = new ArrayBuffer(4);
-//       let metadataLengthView = new DataView(metadataLength);
-//       metadataLengthView.setInt32(0, metadataBytes.byteLength, true);
-//
-//       let combinedData = new Blob([
-//         metadataLength,
-//         metadataBytes,
-//         outputData.buffer,
-//       ]);
-//       socket.send(combinedData);
-//     };
-//   })
-//   .catch((e) => {
-//     console.error("Mic Error:", e);
-//     displayRealtimeText("❌ Mic Access Denied", displayDiv);
-//   });
+// --- DOWNSAMPLING HELPER FUNCTION ---
+// Converts incoming audio (usually 44.1k or 48k) to 16k
+function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
+  if (outputSampleRate === inputSampleRate) {
+    return buffer;
+  }
+  var sampleRateRatio = inputSampleRate / outputSampleRate;
+  var newLength = Math.round(buffer.length / sampleRateRatio);
+  var result = new Float32Array(newLength);
+  var offsetResult = 0;
+  var offsetBuffer = 0;
 
+  while (offsetResult < result.length) {
+    var nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    // Use simple averaging to prevent aliasing
+    var accum = 0,
+      count = 0;
+    for (var i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+      accum += buffer[i];
+      count++;
+    }
+    result[offsetResult] = accum / count;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result;
+}
+
+// --- MAIN AUDIO SETUP ---
 navigator.mediaDevices
-  .getUserMedia({
-    audio: {
-      channelCount: 1,
-      sampleRate: 16000, // <--- CRITICAL: REQUEST 16kHz HARDWARE RATE
-      echoCancellation: true,
-      noiseSuppression: true,
-    },
-  })
+  .getUserMedia({ audio: true }) // Reverted to default (removes hardware error)
   .then((stream) => {
     mic_available = true;
 
-    // FORCE THE CONTEXT TO 16000 HZ
-    // This ensures the math is perfect for the server
-    let audioContext = new AudioContext({ sampleRate: 16000 });
-    audioContext.resume();
+    let audioContext = new AudioContext(); // Default sample rate (likely 44.1k or 48k)
+    let source = audioContext.createMediaStreamSource(stream);
+    let processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-    source = audioContext.createMediaStreamSource(stream);
-    processor = audioContext.createScriptProcessor(4096, 1, 1);
-
+    // GAIN NODE (Volume Boost)
     let gainNode = audioContext.createGain();
-    gainNode.gain.value = 25.0; // Keep the boost
+    gainNode.gain.value = 25.0;
 
     source.connect(gainNode);
     gainNode.connect(processor);
@@ -175,16 +131,23 @@ navigator.mediaDevices
         return;
 
       let inputData = e.inputBuffer.getChannelData(0);
-      let outputData = new Int16Array(inputData.length);
 
-      for (let i = 0; i < inputData.length; i++) {
-        let amplified = inputData[i]; // Gain is already applied by gainNode
-        amplified = Math.max(-1.0, Math.min(1.0, amplified));
+      // 1. DOWNSAMPLE TO 16000 HZ MANUALLY
+      let downsampledData = downsampleBuffer(
+        inputData,
+        audioContext.sampleRate,
+        16000,
+      );
+
+      // 2. CONVERT TO INT16
+      let outputData = new Int16Array(downsampledData.length);
+      for (let i = 0; i < downsampledData.length; i++) {
+        let amplified = downsampledData[i];
+        amplified = Math.max(-1.0, Math.min(1.0, amplified)); // Clamp
         outputData[i] = amplified < 0 ? amplified * 0x8000 : amplified * 0x7fff;
       }
 
-      // We still send metadata to keep protocol consistent,
-      // but it will now always be 16000
+      // 3. SEND (Always marked as 16000)
       let metadata = JSON.stringify({ sampleRate: 16000 });
       let metadataBytes = new TextEncoder().encode(metadata);
       let metadataLength = new ArrayBuffer(4);
@@ -201,8 +164,5 @@ navigator.mediaDevices
   })
   .catch((e) => {
     console.error("Mic Error:", e);
-    displayRealtimeText(
-      "❌ Mic Access Denied / 16kHz Not Supported",
-      displayDiv,
-    );
+    displayRealtimeText("❌ Mic Access Denied", displayDiv);
   });
