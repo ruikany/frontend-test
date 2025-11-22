@@ -100,7 +100,7 @@ navigator.mediaDevices
 
     // SMALLER BUFFER = FASTER VAD RESPONSE
     // 1024 samples is approx 20-60ms depending on sample rate
-    let processor = audioContext.createScriptProcessor(1024, 1, 1);
+    let processor = audioContext.createScriptProcessor(256, 1, 1);
 
     source.connect(processor);
     processor.connect(audioContext.destination);
