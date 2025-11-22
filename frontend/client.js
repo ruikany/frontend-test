@@ -1,14 +1,17 @@
-let socket = new WebSocket("wss://extra-walt-readers-bestsellers.trycloudflare.com/ws/transcribe");
+let socket = new WebSocket(
+  "wss://extra-walt-readers-bestsellers.trycloudflare.com/ws/transcribe",
+);
 let displayDiv = document.getElementById("textDisplay");
 let server_available = false;
 let mic_available = false;
 let fullSentences = [];
 
-  ";
 const serverCheckInterval = 1000; // Check every 5 seconds
 
 function connectToServer() {
-  socket = new WebSocket("wss://extra-walt-readers-bestsellers.trycloudflare.com/ws/transcribe");
+  socket = new WebSocket(
+    "wss://extra-walt-readers-bestsellers.trycloudflare.com/ws/transcribe",
+  );
 
   socket.onopen = function (event) {
     server_available = true;
@@ -123,4 +126,3 @@ navigator.mediaDevices
     };
   })
   .catch((e) => console.error(e));
-
