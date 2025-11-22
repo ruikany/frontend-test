@@ -84,15 +84,88 @@ function start_msg() {
   else displayRealtimeText("👄  start speaking  👄", displayDiv);
 }
 
+// navigator.mediaDevices
+//   .getUserMedia({ audio: true })
+//   .then((stream) => {
+//     mic_available = true;
+//     let audioContext = new AudioContext();
+//     source = audioContext.createMediaStreamSource(stream);
+//     processor = audioContext.createScriptProcessor(4096, 1, 1);
+//
+//     source.connect(processor);
+//     processor.connect(audioContext.destination);
+//
+//     connectToServer();
+//
+//     processor.onaudioprocess = function (e) {
+//       if (!socket || socket.readyState !== WebSocket.OPEN || !is_server_ready)
+//         return;
+//
+//       let inputData = e.inputBuffer.getChannelData(0);
+//       let outputData = new Int16Array(inputData.length);
+//
+//       // for (let i = 0; i < inputData.length; i++) {
+//       //   outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+//       // }
+//
+//       let gain = 25.0; // Boost volume 25x (Force the VAD to hear you)
+//
+//       for (let i = 0; i < inputData.length; i++) {
+//         // Apply gain
+//         let amplified = inputData[i] * gain;
+//
+//         // CLAMP the values so they don't overflow (Distortion protection)
+//         // Range must stay between -1.0 and 1.0 for float audio
+//         amplified = Math.max(-1.0, Math.min(1.0, amplified));
+//
+//         // Convert to 16-bit PCM
+//         outputData[i] = amplified < 0 ? amplified * 0x8000 : amplified * 0x7fff;
+//       }
+//
+//       let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
+//       let metadataBytes = new TextEncoder().encode(metadata);
+//       let metadataLength = new ArrayBuffer(4);
+//       let metadataLengthView = new DataView(metadataLength);
+//       metadataLengthView.setInt32(0, metadataBytes.byteLength, true);
+//
+//       let combinedData = new Blob([
+//         metadataLength,
+//         metadataBytes,
+//         outputData.buffer,
+//       ]);
+//       socket.send(combinedData);
+//     };
+//   })
+//   .catch((e) => {
+//     console.error("Mic Error:", e);
+//     displayRealtimeText("❌ Mic Access Denied", displayDiv);
+//   });
+
 navigator.mediaDevices
-  .getUserMedia({ audio: true })
+  .getUserMedia({
+    audio: {
+      channelCount: 1,
+      sampleRate: 16000, // <--- CRITICAL: REQUEST 16kHz HARDWARE RATE
+      echoCancellation: true,
+      noiseSuppression: true,
+    },
+  })
   .then((stream) => {
     mic_available = true;
-    let audioContext = new AudioContext();
+
+    // FORCE THE CONTEXT TO 16000 HZ
+    // This ensures the math is perfect for the server
+    let audioContext = new AudioContext({ sampleRate: 16000 });
+    audioContext.resume();
+
     source = audioContext.createMediaStreamSource(stream);
     processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-    source.connect(processor);
+    let gainNode = audioContext.createGain();
+    gainNode.gain.value = 25.0; // Keep the boost
+
+    source.connect(gainNode);
+    gainNode.connect(processor);
     processor.connect(audioContext.destination);
 
     connectToServer();
@@ -104,25 +177,15 @@ navigator.mediaDevices
       let inputData = e.inputBuffer.getChannelData(0);
       let outputData = new Int16Array(inputData.length);
 
-      // for (let i = 0; i < inputData.length; i++) {
-      //   outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-      // }
-
-      let gain = 25.0; // Boost volume 25x (Force the VAD to hear you)
-
       for (let i = 0; i < inputData.length; i++) {
-        // Apply gain
-        let amplified = inputData[i] * gain;
-
-        // CLAMP the values so they don't overflow (Distortion protection)
-        // Range must stay between -1.0 and 1.0 for float audio
+        let amplified = inputData[i]; // Gain is already applied by gainNode
         amplified = Math.max(-1.0, Math.min(1.0, amplified));
-
-        // Convert to 16-bit PCM
         outputData[i] = amplified < 0 ? amplified * 0x8000 : amplified * 0x7fff;
       }
 
-      let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
+      // We still send metadata to keep protocol consistent,
+      // but it will now always be 16000
+      let metadata = JSON.stringify({ sampleRate: 16000 });
       let metadataBytes = new TextEncoder().encode(metadata);
       let metadataLength = new ArrayBuffer(4);
       let metadataLengthView = new DataView(metadataLength);
@@ -138,5 +201,8 @@ navigator.mediaDevices
   })
   .catch((e) => {
     console.error("Mic Error:", e);
-    displayRealtimeText("❌ Mic Access Denied", displayDiv);
+    displayRealtimeText(
+      "❌ Mic Access Denied / 16kHz Not Supported",
+      displayDiv,
+    );
   });
