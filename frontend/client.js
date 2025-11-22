@@ -5,6 +5,10 @@ let mic_available = false;
 let fullSentences = [];
 let reconnectTimeout = null;
 
+// global vars issues in V8
+let source = null;
+let processor = null;
+
 // NEW: Flag to control audio flow
 let is_server_ready = false;
 
@@ -85,8 +89,8 @@ navigator.mediaDevices
   .then((stream) => {
     mic_available = true;
     let audioContext = new AudioContext();
-    let source = audioContext.createMediaStreamSource(stream);
-    let processor = audioContext.createScriptProcessor(4096, 1, 1);
+    source = audioContext.createMediaStreamSource(stream);
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
 
     source.connect(processor);
     processor.connect(audioContext.destination);
@@ -94,7 +98,6 @@ navigator.mediaDevices
     connectToServer();
 
     processor.onaudioprocess = function (e) {
-      // CRITICAL FIX: Only send if socket is OPEN AND Server is READY
       if (!socket || socket.readyState !== WebSocket.OPEN || !is_server_ready)
         return;
 
