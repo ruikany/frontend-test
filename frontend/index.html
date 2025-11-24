@@ -13,6 +13,8 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        height: 100vh;
+        margin: 0;
       }
       #controls {
         margin-bottom: 20px;
@@ -21,34 +23,36 @@
         border-radius: 12px;
         text-align: center;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        width: 100%;
+        max-width: 400px;
       }
-      input {
-        padding: 10px;
-        background: #333;
-        border: 1px solid #555;
-        color: white;
-        width: 300px;
-        border-radius: 4px;
-        margin-bottom: 10px;
+      h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        color: #fff;
       }
       button {
-        padding: 12px 24px;
+        padding: 15px 30px;
         cursor: pointer;
         background-color: #007bff;
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: 50px;
         font-weight: bold;
-        font-size: 16px;
-        transition: background-color 0.2s;
-        min-width: 150px;
+        font-size: 18px;
+        transition: all 0.2s ease;
+        width: 100%;
+        text-transform: uppercase;
+        letter-spacing: 1px;
       }
       button:hover {
         background-color: #0056b3;
+        transform: translateY(-2px);
       }
       button:disabled {
         background-color: #555;
         cursor: not-allowed;
+        transform: none;
       }
       button.recording {
         background-color: #dc3545; /* Red for stop */
@@ -62,7 +66,7 @@
           box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
         }
         70% {
-          box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+          box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
         }
         100% {
           box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
@@ -75,9 +79,9 @@
         min-height: 1.2em;
       }
       #textDisplay {
+        flex-grow: 1;
         width: 90%;
         max-width: 800px;
-        min-height: 400px;
         border: 1px solid #444;
         padding: 20px;
         border-radius: 8px;
@@ -85,7 +89,8 @@
         line-height: 1.6;
         white-space: pre-wrap;
         overflow-y: auto;
-        max-height: 70vh;
+        margin-bottom: 20px;
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
       }
       .yellow {
         color: #f1c40f;
@@ -101,35 +106,31 @@
   </head>
   <body>
     <div id="controls">
-      <h3 style="margin-top: 0">STT Interface</h3>
-      <input
-        type="text"
-        id="wsUrl"
-        value="ws://localhost:8000/ws/transcribe"
-        placeholder="WebSocket URL"
-      />
-      <br />
+      <h3>Live Transcribe</h3>
       <button id="recordBtn" onclick="toggleRecording()">
         Start Recording
       </button>
-      <div id="status">Ready</div>
+      <div id="status">Ready to connect</div>
     </div>
 
     <div id="textDisplay"></div>
 
     <script>
+      // HARDCODED CONFIGURATION
+      const WS_URL =
+        "wss://mega-physically-biggest-learning.trycloudflare.com/ws/transcribe";
+
       let socket;
       let audioContext;
       let processor;
       let inputSource;
       let isConnected = false;
       let fullSentences = [];
-      let stream; // Keep reference to close stream later
+      let stream;
 
       const statusDiv = document.getElementById("status");
       const displayDiv = document.getElementById("textDisplay");
       const recordBtn = document.getElementById("recordBtn");
-      const wsUrlInput = document.getElementById("wsUrl");
 
       function toggleRecording() {
         if (isConnected) {
@@ -155,9 +156,7 @@
       }
 
       async function startApp() {
-        const wsUrl = wsUrlInput.value;
         recordBtn.disabled = true;
-        wsUrlInput.disabled = true;
         statusDiv.textContent = "Connecting...";
 
         try {
@@ -171,7 +170,7 @@
           });
 
           // 2. Connect WebSocket
-          socket = new WebSocket(wsUrl);
+          socket = new WebSocket(WS_URL);
 
           socket.onopen = () => {
             statusDiv.textContent = "Connected. Initializing...";
@@ -181,10 +180,9 @@
             const data = JSON.parse(event.data);
 
             if (data.type === "status" && data.text === "ready") {
-              // Server is ready, start sending audio
               startAudioProcessing(stream);
               setUIState(true);
-              statusDiv.textContent = "🔴 Recording...";
+              statusDiv.textContent = "🔴 Live";
             } else if (data.type === "realtime") {
               updateDisplay(data.text);
             } else if (data.type === "fullSentence") {
@@ -194,7 +192,6 @@
           };
 
           socket.onclose = () => {
-            // Triggers when server closes connection or we manually close
             stopApp();
           };
 
@@ -211,31 +208,26 @@
       }
 
       function stopApp() {
-        // Clean up Audio
         stopAudioProcessing();
 
-        // Clean up Socket
         if (socket) {
-          // Remove listener to prevent recursion if we are calling stopApp from onclose
           socket.onclose = null;
           socket.close();
           socket = null;
         }
 
-        // Close Mic Stream (turns off browser recording dot)
         if (stream) {
           stream.getTracks().forEach((track) => track.stop());
           stream = null;
         }
 
         setUIState(false);
-        statusDiv.textContent = "Stopped.";
+        statusDiv.textContent = "Ready";
       }
 
       function setUIState(recording) {
         isConnected = recording;
         recordBtn.disabled = false;
-        wsUrlInput.disabled = recording; // Lock URL while recording
 
         if (recording) {
           recordBtn.textContent = "Stop Recording";
@@ -249,8 +241,6 @@
       function startAudioProcessing(currentStream) {
         audioContext = new AudioContext();
         inputSource = audioContext.createMediaStreamSource(currentStream);
-
-        // 4096 buffer size = ~85ms latency @ 48kHz, efficient for network
         processor = audioContext.createScriptProcessor(4096, 1, 1);
 
         inputSource.connect(processor);
@@ -263,7 +253,6 @@
           const inputData = e.inputBuffer.getChannelData(0);
           const outputData = new Int16Array(inputData.length);
 
-          // Convert to 16-bit PCM
           for (let i = 0; i < inputData.length; i++) {
             outputData[i] = Math.max(
               -32768,
@@ -271,7 +260,6 @@
             );
           }
 
-          // Send Blob
           const metadata = JSON.stringify({
             sampleRate: audioContext.sampleRate,
           });
