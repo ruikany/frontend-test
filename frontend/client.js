@@ -3,7 +3,7 @@ let displayDiv = document.getElementById("textDisplay");
 let is_server_ready = false;
 
 const WEBSOCKET_URL =
-  "wss://extra-walt-readers-bestsellers.trycloudflare.com/ws/transcribe";
+  "wss://mega-physically-biggest-learning.trycloudflare.com/ws/transcribe";
 
 function connectToServer() {
   socket = new WebSocket(WEBSOCKET_URL);
