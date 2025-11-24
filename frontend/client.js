@@ -68,6 +68,8 @@ navigator.mediaDevices
       let outputData = new Int16Array(downsampled.length);
 
       for (let i = 0; i < downsampled.length; i++) {
+        let val = downsampled[i];
+        val = Math.max(-1, Math.min(1, val));
         outputData[i] = val < 0 ? val * 0x8000 : val * 0x7fff;
       }
 
