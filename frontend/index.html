@@ -91,12 +91,7 @@
         overflow-y: auto;
         margin-bottom: 20px;
         box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
-      }
-      .yellow {
-        color: #f1c40f;
-      }
-      .cyan {
-        color: #00e5ff;
+        color: #ffffff;
       }
       .realtime {
         color: #888;
@@ -141,12 +136,7 @@
       }
 
       function updateDisplay(realtimeText) {
-        let html = fullSentences
-          .map(
-            (s, i) =>
-              `<span class="${i % 2 === 0 ? "yellow" : "cyan"}">${s}</span> `,
-          )
-          .join("");
+        let html = fullSentences.map((s) => `<span>${s}</span> `).join("");
 
         if (realtimeText) {
           html += `<span class="realtime">${realtimeText}</span>`;
