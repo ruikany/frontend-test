@@ -67,11 +67,7 @@ navigator.mediaDevices
       );
       let outputData = new Int16Array(downsampled.length);
 
-      const GAIN = 5.0; // Gentle boost
-
       for (let i = 0; i < downsampled.length; i++) {
-        let val = downsampled[i] * GAIN;
-        val = Math.max(-1.0, Math.min(1.0, val));
         outputData[i] = val < 0 ? val * 0x8000 : val * 0x7fff;
       }
 
