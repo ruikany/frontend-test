@@ -19,8 +19,6 @@ export class TranscriptionClient {
     async start() {
         try {
             this.onStatus('Connecting...');
-
-            // 1. Get Microphone Access
             this.stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -29,9 +27,7 @@ export class TranscriptionClient {
                 },
             });
 
-            // 2. Init WebSocket
             this.socket = new WebSocket(this.url);
-
             this.socket.onopen = () => {
                 this.onStatus('Connected. Initializing...');
             };
@@ -40,7 +36,6 @@ export class TranscriptionClient {
                 const data = JSON.parse(event.data);
 
                 if (data.type === "status" && data.text === "ready") {
-                    // Server is ready, start sending audio
                     this._startAudioProcessing();
                     this.onStatus('Live');
                 } else if (data.type === "realtime") {
@@ -68,7 +63,6 @@ export class TranscriptionClient {
     }
 
     stop() {
-        // 1. Stop Audio Processing
         if (this.processor) {
             this.processor.disconnect();
             this.processor = null;
@@ -82,13 +76,11 @@ export class TranscriptionClient {
             this.audioContext = null;
         }
 
-        // 2. Stop Microphone Stream
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
         }
 
-        // 3. Close Socket
         if (this.socket) {
             // Prevent triggering onclose again recursively
             this.socket.onclose = null;
@@ -99,7 +91,6 @@ export class TranscriptionClient {
         this.onStatus('Ready');
     }
 
-    // INTERNAL: The specific protocol logic
     _startAudioProcessing() {
         this.audioContext = new AudioContext();
         this.inputSource = this.audioContext.createMediaStreamSource(this.stream);
