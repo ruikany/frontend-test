@@ -15,7 +15,7 @@
         align-items: center;
         height: 100vh;
         margin: 0;
-      }
+		}
       #controls {
         margin-bottom: 20px;
         padding: 20px;
@@ -111,171 +111,31 @@
     <div id="textDisplay"></div>
 
     <script>
-      // HARDCODED CONFIGURATION
-      const WS_URL =
-        "wss://lake-draws-put-opportunities.trycloudflare.com/ws/transcribe";
-
-      let socket;
-      let audioContext;
-      let processor;
-      let inputSource;
-      let isConnected = false;
-      let fullSentences = [];
-      let stream;
-
-      const statusDiv = document.getElementById("status");
-      const displayDiv = document.getElementById("textDisplay");
-      const recordBtn = document.getElementById("recordBtn");
-
-      function toggleRecording() {
-        if (isConnected) {
-          stopApp();
-        } else {
-          startApp();
-        }
-      }
-
-      function updateDisplay(realtimeText) {
-        let html = fullSentences.map((s) => `<span>${s}</span> `).join("");
-
-        if (realtimeText) {
-          html += `<span class="realtime">${realtimeText}</span>`;
-        }
-        displayDiv.innerHTML = html;
-        displayDiv.scrollTop = displayDiv.scrollHeight;
-      }
-
-      async function startApp() {
-        recordBtn.disabled = true;
-        statusDiv.textContent = "Connecting...";
-
-        try {
-          // 1. Get Microphone Access
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
+        import { TranscriptionClient } from './transcription-client.js';
+        const WS_URL = "wss://lake-draws-put-opportunities.trycloudflare.com/ws/transcribe";
+        const client = new TranscriptionClient(WS_URL, {
+            onRealtime: (text) => {
+                console.log("Current words:", text);
             },
-          });
-
-          // 2. Connect WebSocket
-          socket = new WebSocket(WS_URL);
-
-          socket.onopen = () => {
-            statusDiv.textContent = "Connected. Initializing...";
-          };
-
-          socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-
-            if (data.type === "status" && data.text === "ready") {
-              startAudioProcessing(stream);
-              setUIState(true);
-              statusDiv.textContent = "🔴 Live";
-            } else if (data.type === "realtime") {
-              updateDisplay(data.text);
-            } else if (data.type === "fullSentence") {
-              fullSentences.push(data.text);
-              updateDisplay("");
+            onSentence: (text) => {
+                console.log("Finished sentence:", text);
+            },
+            onStatus: (status) => {
+                console.log("Status:", status);
+            },
+            onError: (err) => {
+                console.error("Oops:", err);
             }
-          };
+        });
 
-          socket.onclose = () => {
-            stopApp();
-          };
-
-          socket.onerror = (err) => {
-            console.error("Socket Error:", err);
-            statusDiv.textContent = "Connection Error.";
-            stopApp();
-          };
-        } catch (err) {
-          console.error("Mic Error:", err);
-          statusDiv.textContent = "Microphone Error: " + err.message;
-          setUIState(false);
-        }
-      }
-
-      function stopApp() {
-        stopAudioProcessing();
-
-        if (socket) {
-          socket.onclose = null;
-          socket.close();
-          socket = null;
-        }
-
-        if (stream) {
-          stream.getTracks().forEach((track) => track.stop());
-          stream = null;
-        }
-
-        setUIState(false);
-        statusDiv.textContent = "Ready";
-      }
-
-      function setUIState(recording) {
-        isConnected = recording;
-        recordBtn.disabled = false;
-
-        if (recording) {
-          recordBtn.textContent = "Stop Recording";
-          recordBtn.classList.add("recording");
-        } else {
-          recordBtn.textContent = "Start Recording";
-          recordBtn.classList.remove("recording");
-        }
-      }
-
-      function startAudioProcessing(currentStream) {
-        audioContext = new AudioContext();
-        inputSource = audioContext.createMediaStreamSource(currentStream);
-        processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-        inputSource.connect(processor);
-        processor.connect(audioContext.destination);
-
-        processor.onaudioprocess = (e) => {
-          if (!isConnected || !socket || socket.readyState !== WebSocket.OPEN)
-            return;
-
-          const inputData = e.inputBuffer.getChannelData(0);
-          const outputData = new Int16Array(inputData.length);
-
-          for (let i = 0; i < inputData.length; i++) {
-            outputData[i] = Math.max(
-              -32768,
-              Math.min(32767, inputData[i] * 32768),
-            );
-          }
-
-          const metadata = JSON.stringify({
-            sampleRate: audioContext.sampleRate,
-          });
-          const metadataBytes = new TextEncoder().encode(metadata);
-          const lenBuffer = new ArrayBuffer(4);
-          new DataView(lenBuffer).setInt32(0, metadataBytes.byteLength, true);
-
-          const blob = new Blob([lenBuffer, metadataBytes, outputData.buffer]);
-          socket.send(blob);
+        document.getElementById('startBtn').onclick = () => {
+            client.start();
         };
-      }
 
-      function stopAudioProcessing() {
-        if (processor) {
-          processor.disconnect();
-          processor = null;
-        }
-        if (inputSource) {
-          inputSource.disconnect();
-          inputSource = null;
-        }
-        if (audioContext) {
-          audioContext.close();
-          audioContext = null;
-        }
-      }
+        // 3. Stop
+        document.getElementById('stopBtn').onclick = () => {
+            client.stop();
+        };
     </script>
   </body>
 </html>
