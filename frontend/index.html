@@ -110,9 +110,24 @@
 
     <div id="textDisplay"></div>
 
-    <script>
+    <script type="module">
         import { TranscriptionClient } from './transcription-client.js';
-        const WS_URL = "wss://lake-draws-put-opportunities.trycloudflare.com/ws/transcribe";
+        const WS_URL = "wss://wants-outlets-instructional-office.trycloudflare.com/ws/transcribe";
+        const statusDiv = document.getElementById("status");
+        const displayDiv = document.getElementById("textDisplay");
+        const recordBtn = document.getElementById("recordBtn");
+        let isRecording = false;
+        let sentences = [];
+
+        function render(currentText = "") {
+            let html = sentences.map((s) => `<span>${s}</span> `).join("");
+            if (currentText) {
+                html += `<span class="realtime">${currentText}</span>`;
+            }
+            displayDiv.innerHTML = html;
+            displayDiv.scrollTop = displayDiv.scrollHeight;
+        }
+
         const client = new TranscriptionClient(WS_URL, {
             onRealtime: (text) => {
                 console.log("Current words:", text);
@@ -128,13 +143,20 @@
             }
         });
 
-        document.getElementById('startBtn').onclick = () => {
-            client.start();
-        };
-
-        // 3. Stop
-        document.getElementById('stopBtn').onclick = () => {
-            client.stop();
+        recordBtn.onclick = async () => {
+            if (!isRecording) {
+                // START
+                await client.start();
+                isRecording = true;
+                recordBtn.textContent = "Stop Recording";
+                recordBtn.classList.add("recording");
+            } else {
+                // STOP
+                client.stop();
+                isRecording = false;
+                recordBtn.textContent = "Start Recording";
+                recordBtn.classList.remove("recording");
+            }
         };
     </script>
   </body>
