@@ -48,7 +48,6 @@ export class TranscriptionClient {
                 this.onStatus('Transcribing File...');
                 await this._streamAudioBuffer(audioBuffer);
                 this.onStatus('File Finished');
-                // Don't close immediately so we can receive final transcription
             });
 
         } catch (err) {
