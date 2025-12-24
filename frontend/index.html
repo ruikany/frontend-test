@@ -1,3 +1,4 @@
+i
 <!doctype html>
 <html lang="en">
 
@@ -10,73 +11,83 @@
 <body>
     <div id="controls">
         <h3>Live Transcribe</h3>
-        <div class="button-group">
-            <button id="startBtn">Start</button>
-            <button id="stopBtn">Stop</button>
+
+        <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #ccc;">
+            <label>Option 1: Upload Audio File (WAV/MP3)</label><br>
+            <input type="file" id="audioFile" accept="audio/*" />
         </div>
-        <div id="status">Ready to connect</div>
+
+        <div class="button-group">
+            <button id="startBtn">Start Processing</button>
+            <button id="stopBtn" disabled>Stop</button>
+        </div>
+        <div id="status" style="margin-top: 10px; font-weight: bold; color: #555;">Ready</div>
     </div>
 
-    <div id="textDisplay"></div>
+    <hr />
+    <div id="textDisplay" style="white-space: pre-wrap; line-height: 1.5;"></div>
 
     <script type="module">
         import {TranscriptionClient} from './transcription-client.js';
 
-        const WS_URL = "wss://zuodu1.com/ws/transcribe";
+        const WS_URL = "wss://zuodu1.com/ws/transcribe"; // Your domain here
         const statusDiv = document.getElementById("status");
         const displayDiv = document.getElementById("textDisplay");
         const startBtn = document.getElementById("startBtn");
         const stopBtn = document.getElementById("stopBtn");
+        const fileInput = document.getElementById("audioFile");
+
         let fullSentences = [];
 
-        function setRecordingState(isRecording) {
-            startBtn.disabled = isRecording;
-            stopBtn.disabled = !isRecording;
+        function setRecordingState(isRunning) {
+            startBtn.disabled = isRunning;
+            stopBtn.disabled = !isRunning;
+            fileInput.disabled = isRunning; // Lock input while running
         }
 
         function updateDisplay(realtimeText) {
             let html = fullSentences.map((s) => `<span>${s}</span> `).join("");
             if (realtimeText) {
-                html += `<span class="realtime">${realtimeText}</span>`;
+                html += `<span style="color: gray;">${realtimeText}</span>`;
             }
             displayDiv.innerHTML = html;
-            displayDiv.scrollTop = displayDiv.scrollHeight;
         }
 
         const client = new TranscriptionClient(WS_URL, {
-            onRealtime: (text) => {
-                updateDisplay(text);
-            },
+            onRealtime: (text) => updateDisplay(text),
             onSentence: (text) => {
                 fullSentences.push(text);
                 updateDisplay("");
             },
-            onStatus: (status) => {
-                statusDiv.textContent = status;
-                if (status === 'Ready' || status === 'Disconnected') {
-                    setRecordingState(false);
-                }
-                if (status === 'Live') {
-                    setRecordingState(true);
-                }
-            },
+            onStatus: (status) => statusDiv.textContent = status,
             onError: (err) => {
-                console.error("Client Error:", err);
+                console.error(err);
+                statusDiv.textContent = "Error: " + err.message;
                 setRecordingState(false);
             }
         });
 
         startBtn.onclick = async () => {
-            startBtn.disabled = true;
+            setRecordingState(true);
+            fullSentences = []; // Clear previous text
+            updateDisplay("");
+
             try {
-                await client.start();
+                // Logic: If file selected, use file. Else use Mic.
+                if (fileInput.files.length > 0) {
+                    await client.startFile(fileInput.files[0]);
+                } else {
+                    await client.startMic();
+                }
             } catch (e) {
-                startBtn.disabled = false;
+                console.error(e);
+                setRecordingState(false);
             }
         }
 
         stopBtn.onclick = () => {
             client.stop();
+            setRecordingState(false);
         }
     </script>
 </body>
