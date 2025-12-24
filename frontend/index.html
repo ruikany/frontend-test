@@ -1,4 +1,3 @@
-i
 <!doctype html>
 <html lang="en">
 
@@ -6,88 +5,292 @@ i
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Realtime STT Client</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: "Courier New", Courier, monospace;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        #controls {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #2d2d2d;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+
+        button {
+            padding: 15px 30px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 18px;
+            transition: all 0.2s ease;
+            width: 100%;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.recording {
+            background-color: #dc3545;
+            /* Red for stop */
+            animation: pulse 2s infinite;
+        }
+
+        button.recording:hover {
+            background-color: #c82333;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+            }
+        }
+
+        #status {
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #888;
+            min-height: 1.2em;
+        }
+
+        #textDisplay {
+            flex-grow: 1;
+            width: 90%;
+            max-width: 800px;
+            border: 1px solid #444;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: #000;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+            color: #ffffff;
+        }
+
+        .realtime {
+            color: #888;
+            font-style: italic;
+        }
+    </style>
 </head>
 
 <body>
     <div id="controls">
         <h3>Live Transcribe</h3>
-
-        <div style="margin-bottom: 10px; padding: 10px; border: 1px solid #ccc;">
-            <label>Option 1: Upload Audio File (WAV/MP3)</label><br>
-            <input type="file" id="audioFile" accept="audio/*" />
-        </div>
-
-        <div class="button-group">
-            <button id="startBtn">Start Processing</button>
-            <button id="stopBtn" disabled>Stop</button>
-        </div>
-        <div id="status" style="margin-top: 10px; font-weight: bold; color: #555;">Ready</div>
+        <button id="recordBtn" onclick="toggleRecording()">
+            Start Recording
+        </button>
+        <div id="status">Ready to connect</div>
     </div>
 
-    <hr />
-    <div id="textDisplay" style="white-space: pre-wrap; line-height: 1.5;"></div>
+    <div id="textDisplay"></div>
 
-    <script type="module">
-        import {TranscriptionClient} from './transcription-client.js';
+    <script>
+        // HARDCODED CONFIGURATION
+        const WS_URL =
+            "wss://zuodu1.com/ws/transcribe";
 
-        const WS_URL = "wss://zuodu1.com/ws/transcribe"; // Your domain here
+        let socket;
+        let audioContext;
+        let processor;
+        let inputSource;
+        let isConnected = false;
+        let fullSentences = [];
+        let stream;
+
         const statusDiv = document.getElementById("status");
         const displayDiv = document.getElementById("textDisplay");
-        const startBtn = document.getElementById("startBtn");
-        const stopBtn = document.getElementById("stopBtn");
-        const fileInput = document.getElementById("audioFile");
+        const recordBtn = document.getElementById("recordBtn");
 
-        let fullSentences = [];
-
-        function setRecordingState(isRunning) {
-            startBtn.disabled = isRunning;
-            stopBtn.disabled = !isRunning;
-            fileInput.disabled = isRunning; // Lock input while running
+        function toggleRecording() {
+            if (isConnected) {
+                stopApp();
+            } else {
+                startApp();
+            }
         }
 
         function updateDisplay(realtimeText) {
             let html = fullSentences.map((s) => `<span>${s}</span> `).join("");
+
             if (realtimeText) {
-                html += `<span style="color: gray;">${realtimeText}</span>`;
+                html += `<span class="realtime">${realtimeText}</span>`;
             }
             displayDiv.innerHTML = html;
+            displayDiv.scrollTop = displayDiv.scrollHeight;
         }
 
-        const client = new TranscriptionClient(WS_URL, {
-            onRealtime: (text) => updateDisplay(text),
-            onSentence: (text) => {
-                fullSentences.push(text);
-                updateDisplay("");
-            },
-            onStatus: (status) => statusDiv.textContent = status,
-            onError: (err) => {
-                console.error(err);
-                statusDiv.textContent = "Error: " + err.message;
-                setRecordingState(false);
-            }
-        });
-
-        startBtn.onclick = async () => {
-            setRecordingState(true);
-            fullSentences = []; // Clear previous text
-            updateDisplay("");
+        async function startApp() {
+            recordBtn.disabled = true;
+            statusDiv.textContent = "Connecting...";
 
             try {
-                // Logic: If file selected, use file. Else use Mic.
-                if (fileInput.files.length > 0) {
-                    await client.startFile(fileInput.files[0]);
-                } else {
-                    await client.startMic();
-                }
-            } catch (e) {
-                console.error(e);
-                setRecordingState(false);
+                // 1. Get Microphone Access
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                });
+
+                // 2. Connect WebSocket
+                socket = new WebSocket(WS_URL);
+
+                socket.onopen = () => {
+                    statusDiv.textContent = "Connected. Initializing...";
+                };
+
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === "status" && data.text === "ready") {
+                        startAudioProcessing(stream);
+                        setUIState(true);
+                        statusDiv.textContent = "🔴 Live";
+                    } else if (data.type === "realtime") {
+                        updateDisplay(data.text);
+                    } else if (data.type === "fullSentence") {
+                        fullSentences.push(data.text);
+                        updateDisplay("");
+                    }
+                };
+
+                socket.onclose = () => {
+                    stopApp();
+                };
+
+                socket.onerror = (err) => {
+                    console.error("Socket Error:", err);
+                    statusDiv.textContent = "Connection Error.";
+                    stopApp();
+                };
+            } catch (err) {
+                console.error("Mic Error:", err);
+                statusDiv.textContent = "Microphone Error: " + err.message;
+                setUIState(false);
             }
         }
 
-        stopBtn.onclick = () => {
-            client.stop();
-            setRecordingState(false);
+        function stopApp() {
+            stopAudioProcessing();
+
+            if (socket) {
+                socket.onclose = null;
+                socket.close();
+                socket = null;
+            }
+
+            if (stream) {
+                stream.getTracks().forEach((track) => track.stop());
+                stream = null;
+            }
+
+            setUIState(false);
+            statusDiv.textContent = "Ready";
+        }
+
+        function setUIState(recording) {
+            isConnected = recording;
+            recordBtn.disabled = false;
+
+            if (recording) {
+                recordBtn.textContent = "Stop Recording";
+                recordBtn.classList.add("recording");
+            } else {
+                recordBtn.textContent = "Start Recording";
+                recordBtn.classList.remove("recording");
+            }
+        }
+
+        function startAudioProcessing(currentStream) {
+            audioContext = new AudioContext();
+            inputSource = audioContext.createMediaStreamSource(currentStream);
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+            inputSource.connect(processor);
+            processor.connect(audioContext.destination);
+
+            processor.onaudioprocess = (e) => {
+                if (!isConnected || !socket || socket.readyState !== WebSocket.OPEN)
+                    return;
+
+                const inputData = e.inputBuffer.getChannelData(0);
+                const outputData = new Int16Array(inputData.length);
+
+                for (let i = 0; i < inputData.length; i++) {
+                    outputData[i] = Math.max(
+                        -32768,
+                        Math.min(32767, inputData[i] * 32768),
+                    );
+                }
+
+                const metadata = JSON.stringify({
+                    sampleRate: audioContext.sampleRate,
+                });
+                const metadataBytes = new TextEncoder().encode(metadata);
+                const lenBuffer = new ArrayBuffer(4);
+                new DataView(lenBuffer).setInt32(0, metadataBytes.byteLength, true);
+
+                const blob = new Blob([lenBuffer, metadataBytes, outputData.buffer]);
+                socket.send(blob);
+            };
+        }
+
+        function stopAudioProcessing() {
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+            if (inputSource) {
+                inputSource.disconnect();
+                inputSource = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
         }
     </script>
 </body>
